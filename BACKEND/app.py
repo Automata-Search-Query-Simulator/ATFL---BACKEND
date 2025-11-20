@@ -4,6 +4,7 @@ import subprocess
 from urllib.parse import unquote
 
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 from config import AUTOMATA_SIM_PATH, BackendConfigError, ensure_binary_available
 from logger import get_logger
@@ -11,7 +12,10 @@ from parser import parse_stdout
 from utils import build_command, write_sequences_to_tempfile
 
 app = Flask(__name__)
+CORS(app, origins=["http://localhost:3000"])
 logger = get_logger()
+
+
 
 
 @app.route("/simulate", methods=["GET"])
