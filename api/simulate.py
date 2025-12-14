@@ -84,13 +84,22 @@ def simulate():
                 timeout=30,
             )
         except FileNotFoundError as e:
+            exists = os.path.exists(str(AUTOMATA_SIM_PATH))
+            hint = (
+                "Binary exists but cannot be executed. On serverless Linux, this often means the dynamic loader/glibc version "
+                "doesn't match the runtime, causing ENOENT. Rebuild the binary for Amazon Linux (glibc-compatible) or build a "
+                "static binary, then redeploy. Alternatively, set AUTOMATA_SIM_PATH to a compatible path."
+                if exists else
+                "Include Linux binary 'BACKEND/automata_sim' in repo or set AUTOMATA_SIM_PATH to an existing path."
+            )
             return jsonify({
                 "error": "Execution failed",
-                "message": "Simulator binary missing at runtime",
+                "message": "Simulator binary missing at runtime" if not exists else "Simulator binary not executable (loader missing)",
                 "details": str(e),
                 "binary": str(AUTOMATA_SIM_PATH),
-                "hint": "Include Linux binary 'BACKEND/automata_sim' in repo or set AUTOMATA_SIM_PATH to an existing path.",
-            }), 400
+                "exists": exists,
+                "hint": hint,
+            }), 500
 
         # Cleanup
         if temp_dataset_path:
