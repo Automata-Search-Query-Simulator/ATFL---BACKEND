@@ -640,3 +640,33 @@ Sequence #2 (len=10)
 
 Runs: 2, Matches: 1, All accepted: no
 
+2025-12-14 08:37:22 - automata_simulator - DEBUG - Executing command: C:\Users\Rhenel Jhon Sajol\Documents\apiiiiiiiiiiiiiiiiiiiiiii\automata-simulator-api\BACKEND\automata_sim.exe --pattern ..((..)) --k 0 --dot-bracket --mode pda --input C:\Users\RHENEL~1\AppData\Local\Temp\tmpxoyktuno.txt --dump-automaton C:\Users\RHENEL~1\AppData\Local\Temp\tmpwa9q_uxs.json
+2025-12-14 08:37:22 - automata_simulator - DEBUG - Command arguments: ['C:\\Users\\Rhenel Jhon Sajol\\Documents\\apiiiiiiiiiiiiiiiiiiiiiii\\automata-simulator-api\\BACKEND\\automata_sim.exe', '--pattern', '..((..))', '--k', '0', '--dot-bracket', '--mode', 'pda', '--input', 'C:\\Users\\RHENEL~1\\AppData\\Local\\Temp\\tmpxoyktuno.txt', '--dump-automaton', 'C:\\Users\\RHENEL~1\\AppData\\Local\\Temp\\tmpwa9q_uxs.json']
+2025-12-14 08:37:22 - automata_simulator - DEBUG - Command return code: 0
+2025-12-14 08:37:22 - automata_simulator - DEBUG - Command stdout (first 500 chars): 
+╔══════════ Automata Simulator ══════════╗
+Pattern: ..((..))
+Datasets: 1 sequence(s)
+Automaton Mode: PDA
+
+Sequence #1 (len=8)
+  Matches: [0,8) 
+  ..((..))
+  States visited: 8 | Max stack depth: 2
+
+Runs: 1, Matches: 1, All accepted: yes
+
+2025-12-14 08:37:22 - automata_simulator - DEBUG - Raw stdout from C++ binary:
+
+╔══════════ Automata Simulator ══════════╗
+Pattern: ..((..))
+Datasets: 1 sequence(s)
+Automaton Mode: PDA
+
+Sequence #1 (len=8)
+  Matches: [0,8) 
+  ..((..))
+  States visited: 8 | Max stack depth: 2
+
+Runs: 1, Matches: 1, All accepted: yes
+
