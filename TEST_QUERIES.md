@@ -333,9 +333,11 @@ curl "http://127.0.0.1:5000/simulate?mode=efa&pattern=ACGT&mismatch_budget=5&seq
 
 ## Mode 4: PDA (Pushdown Automaton)
 
-PDA mode is used for structured sequences like RNA secondary structures. Requires `allow_dot_bracket=true` and uses dot-bracket notation: `(` = open, `)` = close, `.` = unpaired.
+PDA mode is used for structured sequences like RNA secondary structures. Supports two modes:
+1. **Standard PDA**: Uses `allow_dot_bracket=true` for dot-bracket notation validation
+2. **RNA Mode**: Uses `rna_mode=true` for RNA sequence validation with base pairing checks
 
-### Basic Tests
+### Basic Tests (Standard PDA)
 
 #### Test 4.1: Simple balanced parentheses
 
@@ -368,6 +370,68 @@ curl "http://127.0.0.1:5000/simulate?mode=pda&allow_dot_bracket=true&sequences=(
 ```
 
 **Expected**: Match with unpaired positions represented by dots
+
+### RNA Mode Tests
+
+PDA mode can validate RNA sequences with secondary structure using `rna_mode=true`. This validates Watson-Crick base pairing (A-U, G-C) and wobble pairs (G-U).
+
+#### Test 4.12: RNA sequence with inline dot-bracket
+
+```bash
+curl "http://127.0.0.1:5000/simulate?mode=pda&rna_mode=true&sequences=CGUAGCUCUG&secondary_structures=(..((..)))"
+```
+
+**Expected**: Validates RNA sequence against secondary structure
+
+**Response includes**:
+```json
+{
+  "sequences": [{
+    "rna_sequence": "CGUAGCUCUG",
+    "dot_bracket": "(..((..)))",
+    "rna_valid_bases": true,
+    "rna_checks": [
+      "5th nucleotide G <-> 8th nucleotide C -> valid? [OK]",
+      "4th nucleotide A <-> 9th nucleotide U -> valid? [OK]",
+      "1th nucleotide C <-> 10th nucleotide G -> valid? [OK]",
+      "Parentheses balanced? [OK]"
+    ],
+    "rna_result": "Valid"
+  }]
+}
+```
+
+#### Test 4.13: Multiple RNA sequences with structures
+
+```bash
+curl "http://127.0.0.1:5000/simulate?mode=pda&rna_mode=true&sequences=CGUAGCUCUG&sequences=AAAUUUGGG&secondary_structures=(..((..)))&secondary_structures=(((...)))"
+```
+
+**Expected**: Validates each RNA sequence against its corresponding dot-bracket structure
+
+#### Test 4.14: RNA with file input
+
+```bash
+curl "http://127.0.0.1:5000/simulate?mode=pda&rna_mode=true&input_path=datasets/rna/sequence.txt&secondary_structure_path=datasets/rna/sample.txt"
+```
+
+**Expected**: Reads sequences and structures from files, validates base pairing
+
+#### Test 4.15: Invalid RNA bases
+
+```bash
+curl "http://127.0.0.1:5000/simulate?mode=pda&rna_mode=true&sequences=CGXAGCUCUG&secondary_structures=(..((..)))"
+```
+
+**Expected**: Returns validation error for invalid RNA bases (only A, U, C, G allowed)
+
+#### Test 4.16: Invalid base pairing
+
+```bash
+curl "http://127.0.0.1:5000/simulate?mode=pda&rna_mode=true&sequences=CGUAGCUCUA&secondary_structures=(..((..)))"
+```
+
+**Expected**: Returns `rna_result: "Invalid"` if base pairs don't follow Watson-Crick or wobble pairing rules
 
 ### Edge Cases
 
@@ -426,6 +490,14 @@ curl "http://127.0.0.1:5000/simulate?mode=pda&sequences=()"
 ```
 
 **Expected**: May fail or handle differently without the flag
+
+#### Test 4.17: RNA with unbalanced structure
+
+```bash
+curl "http://127.0.0.1:5000/simulate?mode=pda&rna_mode=true&sequences=CGUAGCUCUG&secondary_structures=(..((..)"
+```
+
+**Expected**: Returns validation error for unbalanced parentheses
 
 ---
 
@@ -580,9 +652,20 @@ All successful responses should include:
       ],
       "sequence_text": "...",
       "states_visited": N,
+      "max_stack_depth": N,  // Only for PDA mode
       "match_count": N,
       "has_matches": true/false,
-      "coverage": 0.0-1.0
+      "coverage": 0.0-1.0,
+      // RNA-specific fields (only when rna_mode=true)
+      "rna_sequence": "CGUAGCUCUG",
+      "dot_bracket": "(..((..)))",
+      "rna_valid_bases": true,
+      "rna_checks": [
+        "5th nucleotide G <-> 8th nucleotide C -> valid? [OK]",
+        "4th nucleotide A <-> 9th nucleotide U -> valid? [OK]",
+        "Parentheses balanced? [OK]"
+      ],
+      "rna_result": "Valid"
     }
   ],
   "runs": 1,
@@ -592,7 +675,29 @@ All successful responses should include:
   "sequences_with_matches": N,
   "total_states_visited": N,
   "average_coverage": 0.0-1.0,
-  "automaton": { ... }  // Only for nfa, dfa, efa, pda modes
+  "automaton": {
+    "kind": "PDA",
+    "start": 0,
+    "states": [
+      {
+        "id": 0,
+        "accept": true,
+        "stackDepth": 0,  // PDA-specific field
+        "transitions": [
+          {
+            "code": 40,
+            "symbol": "(",
+            "to": 1,
+            "operation": "push"  // PDA-specific: push, pop, or ignore
+          }
+        ]
+      }
+    ],
+    "rules": [  // PDA-specific field
+      {"expected": "("},
+      {"expected": ")"}
+    ]
+  }
 }
 ```
 
@@ -605,7 +710,19 @@ All successful responses should include:
 2. **Multiple Sequences**: Use repeated `sequences=` parameters or provide `input_path` pointing to a file.
 
 3. **Automaton Structure**: Modes `nfa`, `dfa`, `efa`, and `pda` return automaton structure in the response if the binary supports `--dump-automaton`.
+   - For PDA mode, the automaton includes `stackDepth` for each state and `operation` (push/pop/ignore) for transitions.
 
 4. **Coverage**: Coverage is calculated as the percentage of sequence positions covered by at least one match.
 
 5. **States Visited**: Different modes may visit different numbers of states even for the same pattern/sequence combination.
+
+6. **RNA Mode Parameters**:
+   - `rna_mode=true`: Enables RNA validation mode for PDA
+   - `sequences`: RNA sequences (e.g., "CGUAGCUCUG")
+   - `secondary_structures`: Inline dot-bracket notation (e.g., "(..((..)))")
+   - `secondary_structure_path`: File path to dot-bracket notation file
+   - Validates Watson-Crick pairs (A-U, G-C) and wobble pairs (G-U)
+
+7. **PDA Modes**:
+   - **Standard PDA**: Use `allow_dot_bracket=true` for simple parentheses validation
+   - **RNA PDA**: Use `rna_mode=true` for RNA secondary structure validation with base pairing checks
