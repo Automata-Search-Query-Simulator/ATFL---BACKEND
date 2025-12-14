@@ -1,4 +1,4 @@
-"""Simulate endpoint - step by step debugging."""
+"""Simulate endpoint - Full implementation."""
 from flask import Flask, jsonify, request
 import sys
 import os
@@ -7,50 +7,81 @@ import traceback
 
 app = Flask(__name__)
 
-@app.route('/', methods=["GET", "POST"])
-@app.route('/api/simulate', methods=["GET", "POST"])
+# Add BACKEND to path
+backend_dir = Path(__file__).resolve().parent.parent / "BACKEND"
+sys.path.insert(0, str(backend_dir))
+os.environ["VERCEL"] = "1"
+
+# Import BACKEND modules
+from config import AUTOMATA_SIM_PATH, BackendConfigError, ensure_binary_available
+from logger import get_logger
+from parser import parse_stdout
+from utils import build_command, write_sequences_to_tempfile, create_automaton_dump_file
+import subprocess
+import json
+
+logger = get_logger()
+
+@app.route('/', methods=["GET"])
+@app.route('/api/simulate', methods=["GET"])
 def simulate():
     try:
-        # Step 1: Add BACKEND to path
-        backend_dir = Path(__file__).resolve().parent.parent / "BACKEND"
-        sys.path.insert(0, str(backend_dir))
-        os.environ["VERCEL"] = "1"
-        
-        # Step 2: Try importing modules one by one
-        import_results = {}
-        
+        # Check binary
         try:
-            from config import AUTOMATA_SIM_PATH, BackendConfigError, ensure_binary_available
-            import_results["config"] = "✅ Success"
-        except Exception as e:
-            import_results["config"] = f"❌ {str(e)}"
-            
-        try:
-            from logger import get_logger
-            import_results["logger"] = "✅ Success"
-        except Exception as e:
-            import_results["logger"] = f"❌ {str(e)}"
-            
-        try:
-            from parser import parse_stdout
-            import_results["parser"] = "✅ Success"
-        except Exception as e:
-            import_results["parser"] = f"❌ {str(e)}"
-            
-        try:
-            from utils import build_command, write_sequences_to_tempfile
-            import_results["utils"] = "✅ Success"
-        except Exception as e:
-            import_results["utils"] = f"❌ {str(e)}"
+            ensure_binary_available()
+        except BackendConfigError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        # Get parameters
+        payload = {
+            "input_path": request.args.get("input_path"),
+            "sequences": request.args.getlist("sequences"),
+            "mode": request.args.get("mode", "auto"),
+            "pattern": request.args.get("pattern", ""),
+            "mismatch_budget": request.args.get("mismatch_budget", type=int),
+            "allow_dot_bracket": request.args.get("allow_dot_bracket", "").lower() in ("true", "1", "yes"),
+            "rna_mode": request.args.get("rna_mode", "").lower() in ("true", "1", "yes"),
+        }
+
+        # Handle sequences
+        dataset_path = payload.get("input_path")
+        temp_dataset_path = None
         
-        return jsonify({
-            "status": "debugging",
-            "backend_dir": str(backend_dir),
-            "sys_path": sys.path[:3],
-            "imports": import_results,
-            "request_args": dict(request.args)
-        })
-        
+        if not dataset_path:
+            sequences = payload.get("sequences")
+            if sequences:
+                temp_dataset_path = write_sequences_to_tempfile(sequences)
+                dataset_path = temp_dataset_path
+
+        # Build command
+        cmd = build_command(payload, dataset_path, None)
+
+        # Execute
+        completed = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=30,
+        )
+
+        # Cleanup
+        if temp_dataset_path:
+            os.unlink(temp_dataset_path)
+
+        # Parse results
+        if completed.returncode == 0:
+            parsed_result = parse_stdout(completed.stdout)
+            return jsonify(parsed_result), 200
+        else:
+            return jsonify({
+                "error": "Simulation failed",
+                "stderr": completed.stderr,
+                "returncode": completed.returncode
+            }), 500
+
     except Exception as e:
         return jsonify({
             "error": "Exception in simulate",
