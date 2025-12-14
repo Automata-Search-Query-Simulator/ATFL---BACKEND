@@ -51,10 +51,14 @@ def simulate():
         "pattern": request.args.get("pattern", ""),
         "mismatch_budget": request.args.get("mismatch_budget", type=int),
         "allow_dot_bracket": request.args.get("allow_dot_bracket", "").lower() in ("true", "1", "yes"),
+        "rna_mode": request.args.get("rna_mode", "").lower() in ("true", "1", "yes"),
+        "secondary_structure_path": request.args.get("secondary_structure_path"),
+        "secondary_structures": request.args.getlist("secondary_structures"),  # Inline dot-bracket notation
     }
 
     dataset_path = payload.get("input_path")
     temp_dataset_path = None
+    temp_secondary_path = None
     automaton_dump_path = None
     mode = payload.get("mode", "auto").lower()
     
@@ -63,6 +67,17 @@ def simulate():
         if sequences:
             temp_dataset_path = write_sequences_to_tempfile(sequences)
             dataset_path = temp_dataset_path
+    
+    # Handle inline secondary structures (dot-bracket notation)
+    secondary_structure_path = payload.get("secondary_structure_path")
+    if not secondary_structure_path:
+        secondary_structures = payload.get("secondary_structures")
+        if secondary_structures:
+            temp_secondary_path = write_sequences_to_tempfile(secondary_structures)
+            secondary_structure_path = temp_secondary_path
+    
+    # Add secondary structure path to payload for command builder
+    payload["secondary_structure_path"] = secondary_structure_path
 
     # Create temp file for automaton dump if the selected mode supports it
     # (NFA, DFA, EFA, PDA). AUTO mode doesn't specify which automaton is built.
@@ -74,6 +89,8 @@ def simulate():
     except BackendConfigError as exc:
         if temp_dataset_path:
             os.unlink(temp_dataset_path)
+        if temp_secondary_path:
+            os.unlink(temp_secondary_path)
         if automaton_dump_path and os.path.exists(automaton_dump_path):
             os.unlink(automaton_dump_path)
         return jsonify({"error": str(exc)}), 400
@@ -127,9 +144,15 @@ def simulate():
     finally:
         if temp_dataset_path:
             os.unlink(temp_dataset_path)
+        if temp_secondary_path:
+            os.unlink(temp_secondary_path)
 
     # Parse stdout into structured JSON
     if completed.returncode == 0:
+        # Debug: Log raw stdout when in debug mode
+        if app.debug or os.environ.get("FLASK_DEBUG", "").lower() in ("true", "1", "yes"):
+            logger.debug(f"Raw stdout from C++ binary:\n{completed.stdout}")
+        
         parsed_result = parse_stdout(completed.stdout)
         
         # Load automaton structure from dump file if it exists
@@ -148,9 +171,11 @@ def simulate():
         
         return jsonify(parsed_result), 200
     else:
-        # Clean up automaton dump file on error
+        # Clean up automaton dump file and temp secondary file on error
         if automaton_dump_path and os.path.exists(automaton_dump_path):
             os.unlink(automaton_dump_path)
+        if temp_secondary_path and os.path.exists(temp_secondary_path):
+            os.unlink(temp_secondary_path)
         return jsonify({"error": "Simulation failed", "stderr": completed.stderr}), 500
 
 
