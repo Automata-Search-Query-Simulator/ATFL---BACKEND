@@ -4,4 +4,3 @@ __pycache__/
 BACKEND/logs/
 BACKEND/automata_sim.exe
 *.log
-!BACKEND/automata_sim
